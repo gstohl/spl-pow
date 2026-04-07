@@ -43,9 +43,20 @@ pub fn solution_hash(challenge: &PowHash, miner: &Pubkey, nonce: u64) -> PowHash
 }
 
 #[inline]
-pub fn next_challenge(solution: &PowHash, miner: &Pubkey, total_solutions: u64) -> PowHash {
+pub fn next_challenge(
+    previous_challenge: &PowHash,
+    solution: &PowHash,
+    total_solutions: u64,
+    recent_slot_hash: &PowHash,
+) -> PowHash {
     let total_bytes = total_solutions.to_le_bytes();
-    sha256v(&[b"pow-next", solution.as_ref(), miner.as_ref(), &total_bytes])
+    sha256v(&[
+        b"pow-next",
+        previous_challenge.as_ref(),
+        solution.as_ref(),
+        recent_slot_hash.as_ref(),
+        &total_bytes,
+    ])
 }
 
 #[inline]
@@ -56,6 +67,7 @@ pub fn genesis_challenge(
     vault: &Pubkey,
     difficulty: u8,
     reward_amount: u64,
+    recent_slot_hash: &PowHash,
 ) -> PowHash {
     let reward_bytes = reward_amount.to_le_bytes();
     let difficulty_bytes = [difficulty];
@@ -67,6 +79,7 @@ pub fn genesis_challenge(
         vault.as_ref(),
         &difficulty_bytes,
         &reward_bytes,
+        recent_slot_hash.as_ref(),
     ])
 }
 

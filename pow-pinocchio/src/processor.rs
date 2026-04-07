@@ -3,7 +3,9 @@ use pinocchio::{
     instruction::Signer,
     program_error::ProgramError,
     pubkey::{pubkey_eq, Pubkey},
-    seeds, ProgramResult,
+    seeds,
+    sysvars::slot_hashes::SlotHashes,
+    ProgramResult,
 };
 use pinocchio_tkn::{
     common::TransferChecked,
@@ -44,7 +46,7 @@ fn process_initialize(
     difficulty: u8,
     reward_amount: u64,
 ) -> ProgramResult {
-    let [config_account, authority, reward_mint, vault_account] = accounts else {
+    let [config_account, authority, reward_mint, vault_account, slot_hashes] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -61,7 +63,7 @@ fn process_initialize(
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    let (expected_pda, bump) = derive_config_pda(program_id);
+    let (expected_pda, bump) = derive_config_pda(program_id, authority.key());
     if !pubkey_eq(config_account.key(), &expected_pda) {
         return Err(PowError::InvalidConfigPda.into());
     }
@@ -75,6 +77,7 @@ fn process_initialize(
         Some(config_account.key()),
     )?;
     assert_account_not_frozen(vault_account)?;
+    let recent_slot_hash = latest_slot_hash(slot_hashes)?;
 
     let config = Config {
         authority: *authority.key(),
@@ -90,6 +93,7 @@ fn process_initialize(
             vault_account.key(),
             difficulty,
             reward_amount,
+            &recent_slot_hash,
         ),
         bump,
     };
@@ -98,7 +102,9 @@ fn process_initialize(
 }
 
 fn process_mine(program_id: &Pubkey, accounts: &[AccountInfo], nonce: u64) -> ProgramResult {
-    let [config_account, vault_account, reward_mint, miner_reward_account, miner] = accounts else {
+    let [config_account, vault_account, reward_mint, miner_reward_account, miner, slot_hashes] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -116,7 +122,7 @@ fn process_mine(program_id: &Pubkey, accounts: &[AccountInfo], nonce: u64) -> Pr
     }
 
     let mut config = Config::load(config_account)?;
-    assert_config_pda(program_id, config_account, config.bump)?;
+    assert_config_pda(program_id, config_account, &config.authority, config.bump)?;
 
     if !pubkey_eq(reward_mint.key(), &config.reward_mint) {
         return Err(PowError::WrongRewardMint.into());
@@ -149,14 +155,21 @@ fn process_mine(program_id: &Pubkey, accounts: &[AccountInfo], nonce: u64) -> Pr
         return Err(PowError::HashMissesTarget.into());
     }
 
+    let previous_challenge = config.challenge;
+    let recent_slot_hash = latest_slot_hash(slot_hashes)?;
     config.total_solutions = config
         .total_solutions
         .checked_add(1)
         .ok_or(ProgramError::ArithmeticOverflow)?;
-    config.challenge = next_challenge(&candidate, miner.key(), config.total_solutions);
+    config.challenge = next_challenge(
+        &previous_challenge,
+        &candidate,
+        config.total_solutions,
+        &recent_slot_hash,
+    );
 
     let bump_seed = [config.bump];
-    let signer_seeds = seeds!(crate::state::CONFIG_SEED, &bump_seed);
+    let signer_seeds = seeds!(crate::state::CONFIG_SEED, &config.authority, &bump_seed);
     let signer = Signer::from(&signer_seeds);
 
     TransferChecked {
@@ -193,7 +206,7 @@ fn process_set_difficulty(
     }
 
     let mut config = Config::load(config_account)?;
-    assert_config_pda(program_id, config_account, config.bump)?;
+    assert_config_pda(program_id, config_account, &config.authority, config.bump)?;
 
     if !pubkey_eq(authority.key(), &config.authority) {
         return Err(PowError::Unauthorized.into());
@@ -201,4 +214,12 @@ fn process_set_difficulty(
 
     config.difficulty = difficulty;
     config.store(config_account)
+}
+
+fn latest_slot_hash(slot_hashes_account: &AccountInfo) -> Result<[u8; 32], ProgramError> {
+    let slot_hashes = SlotHashes::from_account_info(slot_hashes_account)?;
+    let entry = slot_hashes
+        .get_entry(0)
+        .ok_or(ProgramError::UnsupportedSysvar)?;
+    Ok(entry.hash)
 }

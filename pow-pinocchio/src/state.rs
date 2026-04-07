@@ -116,18 +116,20 @@ impl Config {
     }
 }
 
-pub fn derive_config_pda(program_id: &Pubkey) -> (Pubkey, u8) {
-    find_program_address(&[CONFIG_SEED], program_id)
+pub fn derive_config_pda(program_id: &Pubkey, authority: &Pubkey) -> (Pubkey, u8) {
+    find_program_address(&[CONFIG_SEED, authority.as_ref()], program_id)
 }
 
 pub fn assert_config_pda(
     program_id: &Pubkey,
     account: &AccountInfo,
+    authority: &Pubkey,
     bump: u8,
 ) -> Result<(), ProgramError> {
     let bump_seed = [bump];
-    let derived = create_program_address(&[CONFIG_SEED, &bump_seed], program_id)
-        .map_err(|_| ProgramError::from(PowError::InvalidConfigPda))?;
+    let derived =
+        create_program_address(&[CONFIG_SEED, authority.as_ref(), &bump_seed], program_id)
+            .map_err(|_| ProgramError::from(PowError::InvalidConfigPda))?;
 
     if account.key() != &derived {
         return Err(PowError::InvalidConfigPda.into());

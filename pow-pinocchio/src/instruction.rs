@@ -89,4 +89,32 @@ mod tests {
         let error = PowInstruction::unpack(&[9]).expect_err("bad tag should fail");
         assert!(matches!(error, ProgramError::Custom(6_000)));
     }
+
+    #[test]
+    fn unpacks_mine() {
+        let mut data = [0u8; 9];
+        data[0] = 1;
+        data[1..9].copy_from_slice(&99u64.to_le_bytes());
+
+        match PowInstruction::unpack(&data).expect("mine should parse") {
+            PowInstruction::Mine { nonce } => assert_eq!(nonce, 99),
+            _ => panic!("wrong instruction"),
+        }
+    }
+
+    #[test]
+    fn unpacks_set_difficulty() {
+        match PowInstruction::unpack(&[2, 17]).expect("set difficulty should parse") {
+            PowInstruction::SetDifficulty { difficulty } => assert_eq!(difficulty, 17),
+            _ => panic!("wrong instruction"),
+        }
+    }
+
+    #[test]
+    fn rejects_wrong_lengths() {
+        assert!(PowInstruction::unpack(&[0, 1]).is_err());
+        assert!(PowInstruction::unpack(&[1, 1]).is_err());
+        assert!(PowInstruction::unpack(&[2]).is_err());
+        assert!(PowInstruction::unpack(&[2, 1, 2]).is_err());
+    }
 }
