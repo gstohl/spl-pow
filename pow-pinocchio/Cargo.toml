@@ -4,15 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 
 [features]
 default = []
 bpf-entrypoint = []
 
 [dependencies]
-pinocchio = "0.9.3"
-pinocchio-tkn = { version = "0.2.2", default-features = false, features = ["common", "helpers", "state"] }
+pinocchio = { version = "0.10.2", features = ["cpi"] }
+pinocchio-token = "0.5.0"
+solana-address = { version = "=2.5.0", features = ["curve25519"] }
 
 [target.'cfg(not(target_os = "solana"))'.dependencies]
 sha2 = { version = "0.10.9", default-features = false }

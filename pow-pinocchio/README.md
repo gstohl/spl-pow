@@ -87,4 +87,18 @@ cargo build-sbf --manifest-path pow-pinocchio/Cargo.toml --features bpf-entrypoi
 
 The workspace includes `.cargo/config.toml` to enable Pinocchio static syscalls for the `sbpf-solana-solana` target.
 
-With the current `pinocchio-tkn -> pinocchio 0.9.3` dependency chain, `cargo build-sbf` still emits post-processing warnings for `sol_memcpy_` and `sol_memset_`. Treat this repository as experimental until you validate `Initialize`, `Mine`, and `SetDifficulty` on a local validator or remove that warning by upgrading the dependency/toolchain combination.
+## Dependency versions
+
+These versions were re-verified on April 7, 2026:
+
+- `pinocchio = 0.10.2`
+- `pinocchio-token = 0.5.0`
+- `solana-address = 2.5.0`
+
+`solana-address 2.6.0` is available on crates.io, but it requires `rustc 1.89.0`. Solana's current `cargo build-sbf` toolchain in this environment uses `rustc 1.84.1-dev`, so this crate intentionally pins `solana-address` to `2.5.0` as the newest compatible release while still using the current Pinocchio line.
+
+## Caveats
+
+With the current `pinocchio 0.10.2` and `pinocchio-token 0.5.0` dependency path, `cargo build-sbf` completes without the earlier `sol_memcpy_` or `sol_memset_` post-processing warnings.
+
+The remaining warning from Solana is that this crate declares both `cdylib` and `rlib`, which disables link-time optimization for the deployable binary. Keep treating the repository as experimental until you validate `Initialize`, `Mine`, and `SetDifficulty` on a local validator, and consider switching to `cdylib`-only packaging for release builds if you want the fully optimized artifact.

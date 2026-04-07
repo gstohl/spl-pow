@@ -1,6 +1,6 @@
 use core::convert::From;
 
-use pinocchio::program_error::ProgramError;
+use pinocchio::error::ProgramError;
 
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

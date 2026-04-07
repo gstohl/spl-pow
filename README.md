@@ -29,6 +29,16 @@ Build the Solana program:
 cargo build-sbf --manifest-path pow-pinocchio/Cargo.toml --features bpf-entrypoint
 ```
 
+## Dependency status
+
+Dependency versions were re-verified on April 7, 2026.
+
+- `pinocchio = 0.10.2`
+- `pinocchio-token = 0.5.0`
+- `solana-address = 2.5.0`
+
+`solana-address 2.6.0` is newer on crates.io, but it requires `rustc 1.89.0`. The current Solana `cargo build-sbf` toolchain in this repo uses `rustc 1.84.1-dev`, so the repo intentionally pins `solana-address` to `2.5.0` as the newest version that still builds for SBF here.
+
 ## How it works
 
 The program uses a config PDA and a prefunded reward vault:
@@ -44,7 +54,9 @@ The program uses a config PDA and a prefunded reward vault:
 
 This project is currently experimental.
 
-The current Pinocchio 0.9 dependency path still produces a `cargo build-sbf` post-processing warning for `sol_memcpy_` / `sol_memset_`. The artifact builds successfully, but the program should be smoke-tested on a local validator before production use.
+The upgraded Pinocchio dependency path builds successfully with both `cargo test` and `cargo build-sbf`.
+
+The remaining `cargo build-sbf` warning is the standard Solana notice that this crate exports both `cdylib` and `rlib`, which disables link-time optimization for the deployable artifact. That is not a runtime-syscall warning anymore, but the program should still be smoke-tested on a local validator before production use.
 
 ## More details
 

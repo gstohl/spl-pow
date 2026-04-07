@@ -1,4 +1,4 @@
-use pinocchio::pubkey::Pubkey;
+use pinocchio::Address;
 
 #[cfg(target_os = "solana")]
 use pinocchio::syscalls::sol_sha256;
@@ -37,7 +37,7 @@ pub fn sha256v(values: &[&[u8]]) -> PowHash {
 }
 
 #[inline]
-pub fn solution_hash(challenge: &PowHash, miner: &Pubkey, nonce: u64) -> PowHash {
+pub fn solution_hash(challenge: &PowHash, miner: &Address, nonce: u64) -> PowHash {
     let nonce_bytes = nonce.to_le_bytes();
     sha256v(&[challenge.as_ref(), miner.as_ref(), &nonce_bytes])
 }
@@ -61,10 +61,10 @@ pub fn next_challenge(
 
 #[inline]
 pub fn genesis_challenge(
-    program_id: &Pubkey,
-    authority: &Pubkey,
-    reward_mint: &Pubkey,
-    vault: &Pubkey,
+    program_id: &Address,
+    authority: &Address,
+    reward_mint: &Address,
+    vault: &Address,
     difficulty: u8,
     reward_amount: u64,
     recent_slot_hash: &PowHash,
@@ -107,6 +107,8 @@ pub fn satisfies_difficulty(hash: &PowHash, difficulty: u8) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use pinocchio::Address;
+
     use super::{leading_zero_bits, satisfies_difficulty, solution_hash};
 
     #[test]
@@ -126,7 +128,7 @@ mod tests {
     #[test]
     fn finds_nonce_for_easy_target() {
         let challenge = [7u8; 32];
-        let miner = [9u8; 32];
+        let miner = Address::new_from_array([9u8; 32]);
 
         let nonce = (0u64..50_000)
             .find(|candidate| {

@@ -1,8 +1,4 @@
-use pinocchio::{
-    account_info::AccountInfo,
-    program_error::ProgramError,
-    pubkey::{create_program_address, find_program_address, Pubkey},
-};
+use pinocchio::{error::ProgramError, AccountView, Address};
 
 use crate::{error::PowError, hash::PowHash};
 
@@ -19,11 +15,11 @@ const OFFSET_TOTAL_SOLUTIONS: usize = 106;
 const OFFSET_CHALLENGE: usize = 114;
 const OFFSET_BUMP: usize = 146;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Config {
-    pub authority: Pubkey,
-    pub reward_mint: Pubkey,
-    pub vault: Pubkey,
+    pub authority: Address,
+    pub reward_mint: Address,
+    pub vault: Address,
     pub difficulty: u8,
     pub reward_amount: u64,
     pub total_solutions: u64,
@@ -32,9 +28,9 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load(account: &AccountInfo) -> Result<Self, ProgramError> {
-        let data = unsafe { account.borrow_data_unchecked() };
-        Self::from_bytes(data)
+    pub fn load(account: &AccountView) -> Result<Self, ProgramError> {
+        let data = account.try_borrow()?;
+        Self::from_bytes(&data)
     }
 
     pub fn from_bytes(data: &[u8]) -> Result<Self, ProgramError> {
@@ -46,14 +42,21 @@ impl Config {
             return Err(ProgramError::UninitializedAccount);
         }
 
-        let mut authority = [0u8; 32];
-        authority.copy_from_slice(&data[OFFSET_AUTHORITY..OFFSET_AUTHORITY + 32]);
-
-        let mut reward_mint = [0u8; 32];
-        reward_mint.copy_from_slice(&data[OFFSET_REWARD_MINT..OFFSET_REWARD_MINT + 32]);
-
-        let mut vault = [0u8; 32];
-        vault.copy_from_slice(&data[OFFSET_VAULT..OFFSET_VAULT + 32]);
+        let authority = Address::new_from_array(
+            data[OFFSET_AUTHORITY..OFFSET_AUTHORITY + 32]
+                .try_into()
+                .map_err(|_| ProgramError::InvalidAccountData)?,
+        );
+        let reward_mint = Address::new_from_array(
+            data[OFFSET_REWARD_MINT..OFFSET_REWARD_MINT + 32]
+                .try_into()
+                .map_err(|_| ProgramError::InvalidAccountData)?,
+        );
+        let vault = Address::new_from_array(
+            data[OFFSET_VAULT..OFFSET_VAULT + 32]
+                .try_into()
+                .map_err(|_| ProgramError::InvalidAccountData)?,
+        );
 
         let difficulty = data[OFFSET_DIFFICULTY];
 
@@ -84,17 +87,17 @@ impl Config {
         })
     }
 
-    pub fn store(&self, account: &AccountInfo) -> Result<(), ProgramError> {
-        let data = &mut *account.try_borrow_mut_data()?;
+    pub fn store(&self, account: &AccountView) -> Result<(), ProgramError> {
+        let data = &mut *account.try_borrow_mut()?;
         if data.len() < CONFIG_LEN {
             return Err(ProgramError::AccountDataTooSmall);
         }
 
-        data.fill(0);
         data[OFFSET_INITIALIZED] = 1;
-        data[OFFSET_AUTHORITY..OFFSET_AUTHORITY + 32].copy_from_slice(&self.authority);
-        data[OFFSET_REWARD_MINT..OFFSET_REWARD_MINT + 32].copy_from_slice(&self.reward_mint);
-        data[OFFSET_VAULT..OFFSET_VAULT + 32].copy_from_slice(&self.vault);
+        data[OFFSET_AUTHORITY..OFFSET_AUTHORITY + 32].copy_from_slice(self.authority.as_ref());
+        data[OFFSET_REWARD_MINT..OFFSET_REWARD_MINT + 32]
+            .copy_from_slice(self.reward_mint.as_ref());
+        data[OFFSET_VAULT..OFFSET_VAULT + 32].copy_from_slice(self.vault.as_ref());
         data[OFFSET_DIFFICULTY] = self.difficulty;
         data[OFFSET_REWARD_AMOUNT..OFFSET_REWARD_AMOUNT + 8]
             .copy_from_slice(&self.reward_amount.to_le_bytes());
@@ -106,8 +109,8 @@ impl Config {
         Ok(())
     }
 
-    pub fn is_initialized(account: &AccountInfo) -> Result<bool, ProgramError> {
-        let data = unsafe { account.borrow_data_unchecked() };
+    pub fn is_initialized(account: &AccountView) -> Result<bool, ProgramError> {
+        let data = account.try_borrow()?;
         if data.len() < CONFIG_LEN {
             return Err(ProgramError::AccountDataTooSmall);
         }
@@ -116,22 +119,22 @@ impl Config {
     }
 }
 
-pub fn derive_config_pda(program_id: &Pubkey, authority: &Pubkey) -> (Pubkey, u8) {
-    find_program_address(&[CONFIG_SEED, authority.as_ref()], program_id)
+pub fn derive_config_pda(program_id: &Address, authority: &Address) -> (Address, u8) {
+    Address::find_program_address(&[CONFIG_SEED, authority.as_ref()], program_id)
 }
 
 pub fn assert_config_pda(
-    program_id: &Pubkey,
-    account: &AccountInfo,
-    authority: &Pubkey,
+    program_id: &Address,
+    account: &AccountView,
+    authority: &Address,
     bump: u8,
 ) -> Result<(), ProgramError> {
     let bump_seed = [bump];
     let derived =
-        create_program_address(&[CONFIG_SEED, authority.as_ref(), &bump_seed], program_id)
+        Address::create_program_address(&[CONFIG_SEED, authority.as_ref(), &bump_seed], program_id)
             .map_err(|_| ProgramError::from(PowError::InvalidConfigPda))?;
 
-    if account.key() != &derived {
+    if account.address() != &derived {
         return Err(PowError::InvalidConfigPda.into());
     }
 
@@ -140,14 +143,16 @@ pub fn assert_config_pda(
 
 #[cfg(test)]
 mod tests {
+    use pinocchio::Address;
+
     use super::{Config, CONFIG_LEN};
 
     #[test]
     fn config_roundtrip() {
         let original = Config {
-            authority: [1u8; 32],
-            reward_mint: [2u8; 32],
-            vault: [4u8; 32],
+            authority: Address::new_from_array([1u8; 32]),
+            reward_mint: Address::new_from_array([2u8; 32]),
+            vault: Address::new_from_array([4u8; 32]),
             difficulty: 11,
             reward_amount: 10_000,
             total_solutions: 7,
@@ -157,9 +162,9 @@ mod tests {
 
         let mut bytes = [0u8; CONFIG_LEN];
         bytes[0] = 1;
-        bytes[1..33].copy_from_slice(&original.authority);
-        bytes[33..65].copy_from_slice(&original.reward_mint);
-        bytes[65..97].copy_from_slice(&original.vault);
+        bytes[1..33].copy_from_slice(original.authority.as_ref());
+        bytes[33..65].copy_from_slice(original.reward_mint.as_ref());
+        bytes[65..97].copy_from_slice(original.vault.as_ref());
         bytes[97] = original.difficulty;
         bytes[98..106].copy_from_slice(&original.reward_amount.to_le_bytes());
         bytes[106..114].copy_from_slice(&original.total_solutions.to_le_bytes());

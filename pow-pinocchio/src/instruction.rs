@@ -1,4 +1,4 @@
-use pinocchio::program_error::ProgramError;
+use pinocchio::error::ProgramError;
 
 use crate::error::PowError;
 
@@ -61,7 +61,7 @@ impl PowInstruction {
 
 #[cfg(test)]
 mod tests {
-    use pinocchio::program_error::ProgramError;
+    use pinocchio::error::ProgramError;
 
     use super::PowInstruction;
 

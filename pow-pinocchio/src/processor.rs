@@ -1,19 +1,12 @@
 use pinocchio::{
-    account_info::AccountInfo,
-    instruction::Signer,
-    program_error::ProgramError,
-    pubkey::{pubkey_eq, Pubkey},
-    seeds,
+    cpi::{Seed, Signer},
+    error::ProgramError,
     sysvars::slot_hashes::SlotHashes,
-    ProgramResult,
+    AccountView, Address, ProgramResult,
 };
-use pinocchio_tkn::{
-    common::TransferChecked,
-    helpers::{
-        assert_account_not_frozen, assert_is_mint, assert_is_token_account, assert_owned_by,
-        get_token_program_id,
-    },
-    state::Mint,
+use pinocchio_token::{
+    instructions::TransferChecked,
+    state::{Mint, TokenAccount},
 };
 
 use crate::{
@@ -23,9 +16,10 @@ use crate::{
     state::{assert_config_pda, derive_config_pda, Config},
 };
 
+#[inline(never)]
 pub fn process_instruction(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
+    program_id: &Address,
+    accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
     match PowInstruction::unpack(instruction_data)? {
@@ -41,8 +35,8 @@ pub fn process_instruction(
 }
 
 fn process_initialize(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
+    program_id: &Address,
+    accounts: &[AccountView],
     difficulty: u8,
     reward_amount: u64,
 ) -> ProgramResult {
@@ -56,41 +50,42 @@ fn process_initialize(
     if !authority.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    if !pubkey_eq(config_account.owner(), program_id) {
+    if !config_account.owned_by(program_id) {
         return Err(ProgramError::IncorrectProgramId);
     }
     if Config::is_initialized(config_account)? {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    let (expected_pda, bump) = derive_config_pda(program_id, authority.key());
-    if !pubkey_eq(config_account.key(), &expected_pda) {
+    let (expected_pda, bump) = derive_config_pda(program_id, authority.address());
+    if config_account.address() != &expected_pda {
         return Err(PowError::InvalidConfigPda.into());
     }
 
-    assert_is_mint(reward_mint)?;
-    let token_program_id = get_token_program_id(reward_mint);
-    assert_owned_by(vault_account, token_program_id)?;
-    assert_is_token_account(
-        vault_account,
-        Some(reward_mint.key()),
-        Some(config_account.key()),
+    let reward_mint_state = Mint::from_account_view(reward_mint)?;
+    assert_mint_initialized(&reward_mint_state)?;
+    let vault_state = TokenAccount::from_account_view(vault_account)?;
+    assert_token_account(
+        &vault_state,
+        reward_mint.address(),
+        config_account.address(),
     )?;
-    assert_account_not_frozen(vault_account)?;
+    assert_not_frozen(&vault_state)?;
+
     let recent_slot_hash = latest_slot_hash(slot_hashes)?;
 
     let config = Config {
-        authority: *authority.key(),
-        reward_mint: *reward_mint.key(),
-        vault: *vault_account.key(),
+        authority: authority.address().clone(),
+        reward_mint: reward_mint.address().clone(),
+        vault: vault_account.address().clone(),
         difficulty,
         reward_amount,
         total_solutions: 0,
         challenge: genesis_challenge(
             program_id,
-            authority.key(),
-            reward_mint.key(),
-            vault_account.key(),
+            authority.address(),
+            reward_mint.address(),
+            vault_account.address(),
             difficulty,
             reward_amount,
             &recent_slot_hash,
@@ -101,7 +96,7 @@ fn process_initialize(
     config.store(config_account)
 }
 
-fn process_mine(program_id: &Pubkey, accounts: &[AccountInfo], nonce: u64) -> ProgramResult {
+fn process_mine(program_id: &Address, accounts: &[AccountView], nonce: u64) -> ProgramResult {
     let [config_account, vault_account, reward_mint, miner_reward_account, miner, slot_hashes] =
         accounts
     else {
@@ -117,40 +112,34 @@ fn process_mine(program_id: &Pubkey, accounts: &[AccountInfo], nonce: u64) -> Pr
     {
         return Err(PowError::ConfigNotWritable.into());
     }
-    if !pubkey_eq(config_account.owner(), program_id) {
+    if !config_account.owned_by(program_id) {
         return Err(ProgramError::IncorrectProgramId);
     }
 
     let mut config = Config::load(config_account)?;
     assert_config_pda(program_id, config_account, &config.authority, config.bump)?;
 
-    if !pubkey_eq(reward_mint.key(), &config.reward_mint) {
+    if reward_mint.address() != &config.reward_mint {
         return Err(PowError::WrongRewardMint.into());
     }
-    if !pubkey_eq(vault_account.key(), &config.vault) {
+    if vault_account.address() != &config.vault {
         return Err(PowError::WrongVaultAccount.into());
     }
 
-    let token_program_id = get_token_program_id(reward_mint);
-    assert_owned_by(vault_account, token_program_id)?;
-    assert_owned_by(miner_reward_account, token_program_id)?;
-    assert_is_token_account(
-        vault_account,
-        Some(reward_mint.key()),
-        Some(config_account.key()),
+    let mint_state = Mint::from_account_view(reward_mint)?;
+    assert_mint_initialized(&mint_state)?;
+    let vault_state = TokenAccount::from_account_view(vault_account)?;
+    let miner_state = TokenAccount::from_account_view(miner_reward_account)?;
+    assert_token_account(
+        &vault_state,
+        reward_mint.address(),
+        config_account.address(),
     )?;
-    assert_is_mint(reward_mint)?;
-    assert_is_token_account(
-        miner_reward_account,
-        Some(reward_mint.key()),
-        Some(miner.key()),
-    )?;
-    assert_account_not_frozen(vault_account)?;
-    assert_account_not_frozen(miner_reward_account)?;
+    assert_token_account(&miner_state, reward_mint.address(), miner.address())?;
+    assert_not_frozen(&vault_state)?;
+    assert_not_frozen(&miner_state)?;
 
-    let mint_state = Mint::from_account_info(reward_mint)?;
-
-    let candidate = solution_hash(&config.challenge, miner.key(), nonce);
+    let candidate = solution_hash(&config.challenge, miner.address(), nonce);
     if !satisfies_difficulty(&candidate, config.difficulty) {
         return Err(PowError::HashMissesTarget.into());
     }
@@ -169,17 +158,20 @@ fn process_mine(program_id: &Pubkey, accounts: &[AccountInfo], nonce: u64) -> Pr
     );
 
     let bump_seed = [config.bump];
-    let signer_seeds = seeds!(crate::state::CONFIG_SEED, &config.authority, &bump_seed);
+    let signer_seeds = [
+        Seed::from(crate::state::CONFIG_SEED),
+        Seed::from(config.authority.as_ref()),
+        Seed::from(&bump_seed),
+    ];
     let signer = Signer::from(&signer_seeds);
 
     TransferChecked {
-        source: vault_account,
+        from: vault_account,
         mint: reward_mint,
-        destination: miner_reward_account,
+        to: miner_reward_account,
         authority: config_account,
         amount: config.reward_amount,
         decimals: mint_state.decimals(),
-        program_id: Some(token_program_id),
     }
     .invoke_signed(&[signer])?;
 
@@ -187,8 +179,8 @@ fn process_mine(program_id: &Pubkey, accounts: &[AccountInfo], nonce: u64) -> Pr
 }
 
 fn process_set_difficulty(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
+    program_id: &Address,
+    accounts: &[AccountView],
     difficulty: u8,
 ) -> ProgramResult {
     let [config_account, authority] = accounts else {
@@ -201,14 +193,14 @@ fn process_set_difficulty(
     if !authority.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    if !pubkey_eq(config_account.owner(), program_id) {
+    if !config_account.owned_by(program_id) {
         return Err(ProgramError::IncorrectProgramId);
     }
 
     let mut config = Config::load(config_account)?;
     assert_config_pda(program_id, config_account, &config.authority, config.bump)?;
 
-    if !pubkey_eq(authority.key(), &config.authority) {
+    if authority.address() != &config.authority {
         return Err(PowError::Unauthorized.into());
     }
 
@@ -216,10 +208,41 @@ fn process_set_difficulty(
     config.store(config_account)
 }
 
-fn latest_slot_hash(slot_hashes_account: &AccountInfo) -> Result<[u8; 32], ProgramError> {
-    let slot_hashes = SlotHashes::from_account_info(slot_hashes_account)?;
+fn latest_slot_hash(slot_hashes_account: &AccountView) -> Result<[u8; 32], ProgramError> {
+    let slot_hashes = SlotHashes::from_account_view(slot_hashes_account)?;
     let entry = slot_hashes
         .get_entry(0)
         .ok_or(ProgramError::UnsupportedSysvar)?;
     Ok(entry.hash)
+}
+
+fn assert_mint_initialized(mint: &Mint) -> Result<(), ProgramError> {
+    if !mint.is_initialized() {
+        return Err(ProgramError::UninitializedAccount);
+    }
+    Ok(())
+}
+
+fn assert_token_account(
+    account: &TokenAccount,
+    expected_mint: &Address,
+    expected_owner: &Address,
+) -> Result<(), ProgramError> {
+    if account.mint() != expected_mint {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if account.owner() != expected_owner {
+        return Err(ProgramError::IllegalOwner);
+    }
+    if !account.is_initialized() {
+        return Err(ProgramError::UninitializedAccount);
+    }
+    Ok(())
+}
+
+fn assert_not_frozen(account: &TokenAccount) -> Result<(), ProgramError> {
+    if account.is_frozen() {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    Ok(())
 }
