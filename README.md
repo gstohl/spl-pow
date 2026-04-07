@@ -54,9 +54,9 @@ The program uses a config PDA and a prefunded reward vault:
 
 This project is currently experimental.
 
-The upgraded Pinocchio dependency path builds successfully with both `cargo test` and `cargo build-sbf`.
+The upgraded Pinocchio dependency path builds successfully with both `cargo test` and `cargo build-sbf` as of April 7, 2026, and the previous SBF post-processing warnings are gone on the current dependency set.
 
-The remaining `cargo build-sbf` warning is the standard Solana notice that this crate exports both `cdylib` and `rlib`, which disables link-time optimization for the deployable artifact. That is not a runtime-syscall warning anymore, but the program should still be smoke-tested on a local validator before production use.
+The program should still be smoke-tested on a local validator before production use.
 
 ## More details
 
@@ -66,4 +66,4 @@ See [`pow-pinocchio/README.md`](./pow-pinocchio/README.md) for:
 - binary instruction encoding
 - config account byte layout
 - vault setup requirements
-- build caveats
+- build notes

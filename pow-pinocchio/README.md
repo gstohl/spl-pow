@@ -99,6 +99,6 @@ These versions were re-verified on April 7, 2026:
 
 ## Caveats
 
-With the current `pinocchio 0.10.2` and `pinocchio-token 0.5.0` dependency path, `cargo build-sbf` completes without the earlier `sol_memcpy_` or `sol_memset_` post-processing warnings.
+With the current `pinocchio 0.10.2`, `pinocchio-token 0.5.0`, and `solana-address 2.5.0` dependency path, `cargo build-sbf` completes cleanly in this environment without the earlier `sol_memcpy_` or `sol_memset_` post-processing warnings.
 
-The remaining warning from Solana is that this crate declares both `cdylib` and `rlib`, which disables link-time optimization for the deployable binary. Keep treating the repository as experimental until you validate `Initialize`, `Mine`, and `SetDifficulty` on a local validator, and consider switching to `cdylib`-only packaging for release builds if you want the fully optimized artifact.
+Keep treating the repository as experimental until you validate `Initialize`, `Mine`, and `SetDifficulty` on a local validator.
