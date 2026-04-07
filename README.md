@@ -2,6 +2,9 @@
 
 Experimental Solana proof-of-work reward program built with Pinocchio.
 
+> Warning
+> This repository is unaudited and untested in any real deployment environment. Do not use it in production or with real funds.
+
 This repository contains a program that:
 
 - stores SPL reward tokens in a vault token account

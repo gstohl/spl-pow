@@ -2,6 +2,9 @@
 
 This crate is a Solana program written with [Pinocchio](https://github.com/anza-xyz/pinocchio). It implements a minimal proof-of-work flow where miners submit a `nonce`, the program verifies a SHA-256 target against a mutable `difficulty`, and successful miners receive SPL tokens from a prefunded vault token account controlled by the config PDA.
 
+> Warning
+> This program is unaudited and untested in any real deployment environment. Do not use it in production or with real funds.
+
 ## Design
 
 - Config PDA seeds: `b"pow-config"`, `authority_pubkey`
