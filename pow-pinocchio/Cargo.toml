@@ -1,0 +1,23 @@
+[package]
+name = "pow-pinocchio"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+bpf-entrypoint = []
+
+[dependencies]
+pinocchio = "0.9.3"
+pinocchio-tkn = { version = "0.2.2", default-features = false, features = ["common", "helpers", "state"] }
+
+[target.'cfg(not(target_os = "solana"))'.dependencies]
+sha2 = { version = "0.10.9", default-features = false }
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+priority = 0
+check-cfg = ['cfg(target_os, values("solana"))']
